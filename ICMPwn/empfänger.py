@@ -14,6 +14,12 @@ def initialize_pcap_file(pcap_file):
     with open(pcap_file, "wb") as f:
         pass  # Create an empty file (optional, Scapy can create it automatically)
 
+def initialize_output(output_file):
+    if os.path.exists(output_file):
+        os.remove(output_file)  # Delete if it exists
+    with open(output_file, "wb") as f:
+        pass  # Create an empty file (optional, Scapy can create it automatically)
+
 # Function to verify CRC32 checksum
 def verify_crc(data, checksum):
     calculated_checksum = zlib.crc32(data) & 0xFFFFFFFF
@@ -21,7 +27,7 @@ def verify_crc(data, checksum):
 
 # Callback function to process each packet
 def process_packet(packet):
-    if packet.haslayer(ICMP) and packet[ICMP].type == 8:  # Check for ICMP Echo Request
+    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
         raw_data = packet[Raw].load
         
         # Extract packet number, data, and checksum
@@ -32,8 +38,9 @@ def process_packet(packet):
         # Verify checksum
         if verify_crc(data, received_checksum):
             print(f"Packet {packet_number}: Checksum verified. Writing data to file...")
+            
             # Decode base64 and append to the output file
-            with open(output_file, "ab") as file:  # Append in binary mode
+            with open(output_file, "ab") as file:
                 file.write(base64.b64decode(data))
         else:
             print(f"Packet {packet_number}: Checksum verification failed!")
@@ -45,6 +52,7 @@ def process_packet(packet):
 def start_listener():
     print("Initializing listener...")
     initialize_pcap_file(pcap_file)  # Clear the PCAP file before starting
+    initialize_output(output_file)
     print(f"Listening for ICMP packets. Captured packets will be saved to {pcap_file}.")
     sniff(filter="icmp", prn=process_packet, store=False)  # Start sniffing for ICMP packets
 
