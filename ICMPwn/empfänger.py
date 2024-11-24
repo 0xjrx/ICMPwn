@@ -1,105 +1,72 @@
 import os
 import base64
 import zlib
-import binascii
 from scapy.all import sniff, wrpcap, ICMP, Raw, send, IP
-from typing import Dict, Optional
 
-class PacketProcessor:
-    def __init__(self):
-        # File paths
-        self.pcap_file = "received_packets.pcap"
-        self.output_file = "reconstructed_data.txt"
-        self.received_packets: Dict[int, bytes] = {}  # Store received packets
-        self.ip_dst = "172.16.10.38"  # Target IP for verification responses
+# File paths
+pcap_file = "received_packets.pcap"  # File to save captured packets
+output_file = "reconstructed_data.txt"  # File to write decoded data
+
+# Function to clear or create the PCAP file
+def initialize_pcap_file(pcap_file):
+    if os.path.exists(pcap_file):
+        os.remove(pcap_file)  # Delete if it exists
+    with open(pcap_file, "wb") as f:
+        pass  # Create an empty file (optional, Scapy can create it automatically)
+
+def initialize_output(output_file):
+    if os.path.exists(output_file):
+        os.remove(output_file)  # Delete if it exists
+    with open(output_file, "wb") as f:
+        pass  # Create an empty file (optional, Scapy can create it automatically)
+
+# Function to verify CRC32 checksum
+def verify_crc(data, checksum):
+    calculated_checksum = zlib.crc32(data) & 0xFFFFFFFF
+    return calculated_checksum == checksum
+
+# Callback function to process each packet
+def process_packet(packet):
+    ip_dst = "172.16.10.38"         # Target IP
+    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
+        raw_data = packet[Raw].load
         
-    def initialize_files(self):
-        """Initialize or clear the PCAP and output files"""
-        for file_path in [self.pcap_file, self.output_file]:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            with open(file_path, "wb") as f:
-                pass
-
-    def verify_crc(self, data: bytes, checksum: int) -> bool:
-        """Verify CRC32 checksum"""
-        calculated_checksum = zlib.crc32(data) & 0xFFFFFFFF
-        return calculated_checksum == checksum
-
-    def send_verification_packet(self, verification_status: bool, packet_number: int):
-        """Send verification packet back to sender"""
-        status_byte = 1 if verification_status else 0
-        verification_packet = (
-            IP(dst=self.ip_dst)
-            / ICMP(type=0, id=packet_number)  # Using echo-reply type
-            / Raw(load=packet_number.to_bytes(4, byteorder="big") + bytes([status_byte]))
-        )
-        send(verification_packet)
-        wrpcap(self.pcap_file, verification_packet, append=True)
-        print(f"Sent verification packet for packet {packet_number}: {'Success' if verification_status else 'Failed'}")
-
-    def save_data(self, packet_number: int, data: bytes):
-        """Save decoded data to file in correct order"""
-        self.received_packets[packet_number] = data
+        # Extract packet number, data, and checksum
+        packet_number = int.from_bytes(raw_data[:4], byteorder="big")
+        data = raw_data[4:-4]
+        received_checksum = int.from_bytes(raw_data[-4:], byteorder="big")
         
-        # Write consecutive packets to file
-        current_packet = min(self.received_packets.keys())
-        while current_packet in self.received_packets:
-            try:
-                decoded_data = base64.b64decode(self.received_packets[current_packet])
-                with open(self.output_file, "ab") as file:
-                    file.write(decoded_data)
-                del self.received_packets[current_packet]
-                current_packet += 1
-            except binascii.Error:
-                print(f"Warning: Invalid base64 data in packet {current_packet}")
-                break
+        # Verify checksum
+        if verify_crc(data, received_checksum):
+            print(f"Packet {packet_number}: Checksum verified. Writing data to file...")
+            
+            # Decode base64 and append to the output file
+            with open(output_file, "ab") as file:
+                file.write(base64.b64decode(data))
 
-    def process_packet(self, packet):
-        """Process incoming ICMP packets"""
-        if not (packet.haslayer(ICMP) and packet.haslayer(Raw)):
-            return
+            checksum_verification = 1
+        else:
+            print(f"Packet {packet_number}: Checksum verification failed!")
+            checksum_verification = 0
+            packet = (
+                IP(dst=ip_dst)
+                / ICMP(type="echo-request")
+                / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
+            )
+            print(f"Sending packet {packet_number} to {ip_dst}")
+            send(packet)
 
-        try:
-            raw_data = packet[Raw].load
-            
-            # Ignore verification response packets
-            if len(raw_data) < 8:  # Too short to be a data packet
-                return
-            
-            # Extract packet components
-            packet_number = int.from_bytes(raw_data[:4], byteorder="big")
-            data = raw_data[4:-4]
-            received_checksum = int.from_bytes(raw_data[-4:], byteorder="big")
-            
-            print(f"Received packet {packet_number}")
-            
-            # Verify checksum
-            verification_status = self.verify_crc(data, received_checksum)
-            
-            if verification_status:
-                print(f"Packet {packet_number}: Checksum verified")
-                if packet_number not in self.received_packets:
-                    self.save_data(packet_number, data)
-            else:
-                print(f"Packet {packet_number}: Checksum verification failed!")
-            
-            # Send verification response
-            self.send_verification_packet(verification_status, packet_number)
-            
-        except Exception as e:
-            print(f"Error processing packet: {e}")
+        # Save the packet to the PCAP file
+        wrpcap(pcap_file, packet, append=True)
 
+# Start the listener
 def start_listener():
-    """Initialize and start the packet listener"""
-    processor = PacketProcessor()
     print("Initializing listener...")
-    processor.initialize_files()
-    print(f"Listening for ICMP packets. Captured packets will be saved to {processor.pcap_file}")
-    print(f"Decoded data will be written to {processor.output_file}")
-    
-    # Start sniffing for ICMP packets
-    sniff(filter="icmp", prn=processor.process_packet, store=False)
+    initialize_pcap_file(pcap_file)  # Clear the PCAP file before starting
+    initialize_output(output_file)
+    print(f"Listening for ICMP packets. Captured packets will be saved to {pcap_file}.")
+    sniff(filter="icmp", prn=process_packet, store=False)  # Start sniffing for ICMP packets
 
 if __name__ == "__main__":
     start_listener()
+

