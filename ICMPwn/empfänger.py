@@ -29,7 +29,7 @@ def verify_crc(data, checksum):
 def process_packet():
     packets = sniff(filter="icmp",store=True, count = 1)  # Start sniffing for ICMP packets
     
-    ip_dst = "192.168.0.148"         # Target IP
+    ip_dst = "192.168.0.34"         # Target IP
     raw = packets[0]
     raw_data = raw[Raw].load
     wrpcap(pcap_file,packets[0], append = True )
@@ -53,11 +53,12 @@ def process_packet():
         print(("Packet:", packet[Raw].load))
         send(packet)
          
+        wrpcap(pcap_file,packet,append=True)
+
             # Decode base64 and append to the output file
         with open(output_file, "ab") as file:
             file.write(base64.b64decode(data))
 
-        wrpcap(pcap_file, packet, append=True)
     else:
             print(f"Packet {packet_number}: Checksum verification failed!")
             checksum_verification = 0
