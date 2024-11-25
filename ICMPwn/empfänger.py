@@ -46,7 +46,7 @@ def process_packet():
         checksum_verification = 1
         packet = (
                  IP(dst=ip_dst)
-                / ICMP(type="echo-reply")
+                / ICMP(type="echo-request")
                 / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
             )
         print(f"Sending packet {packet_number} to {ip_dst}")
@@ -64,7 +64,7 @@ def process_packet():
             checksum_verification = 0
             packet = (
                 IP(dst=ip_dst)
-                / ICMP(type="echo-reply")
+                / ICMP(type="echo-request")
                 / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
             )
             print(f"Sending packet {packet_number} to {ip_dst}")

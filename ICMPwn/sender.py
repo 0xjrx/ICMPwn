@@ -61,17 +61,13 @@ def main():
             send_icmp_packet(current_packet_data, ip_dst, packet_number, pcap_file)
 
             #time.sleep(1)
-            print("-____-")
             packets = sniff(filter="icmp", count = 1)
-            print("+++++++")
             #print(packets)
             new_data = packets[0]
             wrpcap(pcap_file,packets , append=True)  # Save packet to .pcap
 
             raw = new_data[Raw].load
-            print("raw", raw)
             value = receive_checksum(raw)
-            print("value", value)
             if value == True:
                 packet_number += 1
                 break
