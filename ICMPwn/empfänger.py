@@ -12,13 +12,13 @@ def initialize_pcap_file(pcap_file):
     if os.path.exists(pcap_file):
         os.remove(pcap_file)  # Delete if it exists
     with open(pcap_file, "wb") as f:
-        pass  # Create an empty file (optional, Scapy can create it automatically)
+        pass  # Create an empty file 
 
 def initialize_output(output_file):
     if os.path.exists(output_file):
         os.remove(output_file)  # Delete if it exists
     with open(output_file, "wb") as f:
-        pass  # Create an empty file (optional, Scapy can create it automatically)
+        pass  # Create an empty file 
 
 # Function to verify CRC32 checksum
 def verify_crc(data, checksum):
@@ -29,7 +29,7 @@ def verify_crc(data, checksum):
 def process_packet():
     packets = sniff(filter="icmp",store=True, count = 1)  # Start sniffing for ICMP packets
     
-    ip_dst = "192.168.0.34"         # Target IP
+    ip_dst = "172.16.10.32"         # Target IP
     raw = packets[0]
     raw_data = raw[Raw].load
     wrpcap(pcap_file,packets[0], append = True )
@@ -50,7 +50,7 @@ def process_packet():
                 / Raw(load = checksum_verification.to_bytes(1, byteorder="big"))
             )
         print(f"Sending packet {packet_number} to {ip_dst}")
-        print(("Packet:", packet[Raw].load))
+        print(("Verification packet:", packet[Raw].load))
         send(packet)
          
         wrpcap(pcap_file,packet,append=True)
@@ -78,7 +78,7 @@ def process_packet():
 # Start the listener
 def start_listener():
     print("Initializing listener...")
-    initialize_pcap_file(pcap_file)  # Clear the PCAP file before starting
+    initialize_pcap_file(pcap_file)  # Clear the PCAP file
     initialize_output(output_file)
     print(f"Listening for ICMP packets. Captured packets will be saved to {pcap_file}.")
     process_packet() # Start sniffing for ICMP packets

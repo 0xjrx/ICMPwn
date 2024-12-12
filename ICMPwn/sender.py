@@ -40,7 +40,7 @@ def receive_checksum(raw_data):
 # Main logic
 def main():
     filename = "./Robotergesetze.txt"  # File to read
-    ip_dst = "192.168.0.148"         # Target IP
+    ip_dst = "172.16.10.32"         # Target IP
     packet_size = 1400               # Max ICMP packet size
     pcap_file = "sent_packets.pcap"
     initialize_pcap_file(pcap_file)
@@ -64,13 +64,14 @@ def main():
             packets = sniff(filter="icmp", count = 1)
             #print(packets)
             new_data = packets[0]
-            wrpcap(pcap_file,packets , append=True)  # Save packet to .pcap
+            wrpcap(pcap_file,packets, append=True)  # Save packet to .pcap
 
             raw = new_data[Raw].load
             value = receive_checksum(raw)
             if value == True:
                 packet_number += 1
                 break
+            
             else:
                 continue
         encoded_data = encoded_data[packet_size:]
