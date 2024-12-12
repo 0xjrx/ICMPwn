@@ -1,6 +1,6 @@
 # ICMPwn
 
-**ICMPwn** is a pair of Python scripts designed to transfer and reconstruct data by encapsulating it within ICMP echo-request and echo-reply packets. This technique can be used for data exfiltration, covert communication, or experimenting with ICMP-based data transfer methods.
+**ICMPwn** is a pair of Python scripts designed to transfer and reconstruct data by encapsulating it within ICMP echo-request and echo-reply packets. This technique can be used for data exfiltration, covert communication, or experimenting with ICMP-based data transfer methods. This is just a proof of concept for a Network Security course at DHBW Mannheim.
 
 ## Overview
 
